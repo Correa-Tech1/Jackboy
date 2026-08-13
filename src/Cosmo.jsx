@@ -50,26 +50,29 @@ import {
 
 // ============ PALETA (azul elétrico / HUD Stark-Wayne) ============
 const C = {
-  // fundos: grafite escuro, sóbrio e neutro
-  bg0: "#0C0C0E",
-  bg1: "#121214",
-  panel: "rgba(255,255,255,0.025)",
-  panelBorder: "rgba(255,255,255,0.08)",
-  // textos: escala de cinza clara e elegante
-  ink: "#EDEDEF",
-  inkSoft: "#B4B4B8",
-  inkMute: "#7C7C82",
-  inkFaint: "#4E4E54",
-  // ACENTO PRINCIPAL: prata/branco — contraste, não cor. Botões primários usam isto.
-  blue: "#E8E8EA",        // "acento" neutro (mantém a chave por compatibilidade)
-  blueBright: "#F4F4F6",  // destaque claro (ícone ativo, texto de ênfase)
-  blueLight: "#C8C8CC",   // cinza-claro suave
-  bluePale: "#DEDEE2",
-  blueDeep: "#5A5A60",    // cinza médio (barras de progresso)
-  blueLine: "rgba(255,255,255,0.16)",
-  danger: "#D66A5E",
-  gold: "#C6A15B",
-  green: "#5FA98C",
+  // fundos: grafite claro (meio-termo), tema de engenharia
+  bg0: "#3A3D42",          // fundo base (grafite médio)
+  bg1: "#42454B",          // um degrau acima
+  panel: "rgba(255,255,255,0.06)",
+  panelBorder: "rgba(255,255,255,0.10)",
+  // textos: claros sobre o grafite
+  ink: "#F4F5F7",
+  inkSoft: "#D2D4D8",
+  inkMute: "#9DA0A6",
+  inkFaint: "#71747A",
+  // ACENTOS: azul + amarelo (engenharia elétrica)
+  blue: "#4FA3E0",         // azul principal (botões, ícones ativos)
+  blueBright: "#F2C230",   // AMARELO de destaque (ênfase, ativo) — dupla com o azul
+  blueLight: "#7FC0EE",    // azul claro suave
+  bluePale: "#A9D5F2",
+  blueDeep: "#2E7CB8",     // azul profundo (barras de progresso)
+  blueLine: "rgba(79,163,224,0.45)",
+  gold: "#F2C230",         // amarelo (compromissos, estrelas)
+  danger: "#E8705F",
+  green: "#5FB58C",
+  // cores elétricas nomeadas (uso direto nas animações/detalhes)
+  amarelo: "#F2C230",
+  azul: "#4FA3E0",
 };
 // cores vivas — usadas SÓ em pontos/ícones de categoria, com parcimônia (nunca em fundos)
 const AREA_COLOR = {
@@ -1089,47 +1092,57 @@ function CosmoMark({ size = 92, pulse = true }) {
   return (
     <svg width={s} height={s} viewBox="0 0 92 92" aria-hidden="true" style={pulse ? { animation: "cosmoPulse 3s ease-in-out infinite" } : undefined}>
       <defs>
-        <radialGradient id="cmCore" cx="50%" cy="42%" r="60%">
-          <stop offset="0%" stopColor="#FFFFFF" />
-          <stop offset="40%" stopColor="#E8E8EA" />
-          <stop offset="100%" stopColor="#B8862E" />
-        </radialGradient>
-        <linearGradient id="cmArc" x1="0%" y1="0%" x2="100%" y2="100%">
-          <stop offset="0%" stopColor="#D8D8DC" />
-          <stop offset="50%" stopColor="#9A9AA0" />
-          <stop offset="100%" stopColor="#5A5A60" />
+        <linearGradient id="jbBlue" x1="0%" y1="0%" x2="100%" y2="100%">
+          <stop offset="0%" stopColor="#7FC0EE" />
+          <stop offset="100%" stopColor="#2E7CB8" />
         </linearGradient>
-        <radialGradient id="cmHalo" cx="50%" cy="50%" r="50%">
-          <stop offset="0%" stopColor="#9A9AA0" stopOpacity="0.5" />
-          <stop offset="100%" stopColor="#9A9AA0" stopOpacity="0" />
-        </radialGradient>
+        <linearGradient id="jbYellow" x1="0%" y1="0%" x2="0%" y2="100%">
+          <stop offset="0%" stopColor="#F7D65A" />
+          <stop offset="100%" stopColor="#E0A81A" />
+        </linearGradient>
       </defs>
-      {/* halo que respira */}
-      <circle cx="46" cy="46" r="44" fill="url(#cmHalo)" style={pulse ? { animation: "cosmoHalo 3s ease-in-out infinite", transformOrigin: "46px 46px" } : undefined} />
-      <ellipse cx="46" cy="46" rx="40" ry="15" fill="none" stroke="#2A4A7F" strokeWidth="1.5" transform="rotate(-28 46 46)" />
-      <path d="M 70 22 A 34 34 0 1 0 70 70" fill="none" stroke="#0A1428" strokeWidth="9" strokeLinecap="round" />
-      <path d="M 70 22 A 34 34 0 1 0 70 70" fill="none" stroke="url(#cmArc)" strokeWidth="6.5" strokeLinecap="round" />
-      {/* corrente elétrica percorrendo o arco */}
+      {/* moldura hexagonal tech (engenharia) */}
+      <polygon points="46,8 78,26 78,66 46,84 14,66 14,26" fill="none" stroke="url(#jbBlue)" strokeWidth="2.5" strokeLinejoin="round" />
+      <polygon points="46,16 71,30 71,62 46,76 21,62 21,30" fill="none" stroke="#F2C230" strokeWidth="1" strokeLinejoin="round" opacity="0.35" strokeDasharray="3 5" />
+      {/* corrente elétrica percorrendo o hexágono */}
       {pulse && (
-        <path
-          className="jackboy-current"
-          d="M 70 22 A 34 34 0 1 0 70 70"
-          fill="none"
-          stroke="#FBF6EA"
-          strokeWidth="3"
-          strokeLinecap="round"
-        />
+        <polygon className="jackboy-current" points="46,8 78,26 78,66 46,84 14,66 14,26" fill="none" stroke="#F7D65A" strokeWidth="2" strokeLinejoin="round" />
       )}
-      <path d="M 69 21 A 34 34 0 0 0 12 46" fill="none" stroke="#D8D8DC" strokeWidth="2" strokeLinecap="round" opacity="0.7" />
-      <circle cx="46" cy="46" r="12" fill="url(#cmHalo)" />
-      <circle cx="46" cy="46" r="7.5" fill="url(#cmCore)" />
-      <circle cx="43.5" cy="43.5" r="2.5" fill="#fff" opacity="0.85" />
-      {/* satélite com brilho pulsante */}
-      <g transform="rotate(-28 46 46)">
-        <circle cx="86" cy="46" r="4" fill="#D8D8DC" style={pulse ? { animation: "cosmoSat 3s ease-in-out infinite", transformOrigin: "86px 46px" } : undefined} />
-        <circle cx="84.5" cy="44.5" r="1.3" fill="#fff" />
-      </g>
+      {/* J geométrico minimalista */}
+      <path d="M 56 28 L 56 52 Q 56 63 45 63 Q 35 63 34 54" fill="none" stroke="url(#jbYellow)" strokeWidth="7" strokeLinecap="round" strokeLinejoin="round" />
+      {/* raio azul que corta o J */}
+      <path d="M 50 30 L 40 45 L 48 45 L 38 60" fill="none" stroke="#4FA3E0" strokeWidth="3.5" strokeLinecap="round" strokeLinejoin="round" />
+      {/* nós de circuito */}
+      <circle cx="56" cy="28" r="3" fill="#F2C230" />
+      <circle cx="34" cy="54" r="2.5" fill="#4FA3E0" />
     </svg>
+  );
+}
+
+// fundo animado: raios cortando + engrenagens girando (identidade de engenheiro)
+function JackboyBackdrop() {
+  return (
+    <div aria-hidden="true" style={{ position: "fixed", inset: 0, zIndex: 0, pointerEvents: "none", overflow: "hidden" }}>
+      {/* engrenagens girando */}
+      <svg style={{ position: "absolute", top: "8%", right: "-40px", width: 180, height: 180, opacity: 0.07 }} viewBox="0 0 100 100">
+        <g className="jb-gear-cw" style={{ transformOrigin: "50px 50px" }}>
+          <path d="M50 12 L54 12 L55 22 A28 28 0 0 1 62 25 L70 19 L76 25 L70 33 A28 28 0 0 1 73 40 L83 41 L83 47 L73 48 A28 28 0 0 1 70 55 L76 63 L70 69 L62 63 A28 28 0 0 1 55 66 L54 76 L46 76 L45 66 A28 28 0 0 1 38 63 L30 69 L24 63 L30 55 A28 28 0 0 1 27 48 L17 47 L17 41 L27 40 A28 28 0 0 1 30 33 L24 25 L30 19 L38 25 A28 28 0 0 1 45 22 Z" fill="#F2C230" />
+          <circle cx="50" cy="50" r="12" fill="none" stroke="#3A3D42" strokeWidth="8" />
+        </g>
+      </svg>
+      <svg style={{ position: "absolute", bottom: "12%", left: "-50px", width: 220, height: 220, opacity: 0.06 }} viewBox="0 0 100 100">
+        <g className="jb-gear-ccw" style={{ transformOrigin: "50px 50px" }}>
+          <path d="M50 12 L54 12 L55 22 A28 28 0 0 1 62 25 L70 19 L76 25 L70 33 A28 28 0 0 1 73 40 L83 41 L83 47 L73 48 A28 28 0 0 1 70 55 L76 63 L70 69 L62 63 A28 28 0 0 1 55 66 L54 76 L46 76 L45 66 A28 28 0 0 1 38 63 L30 69 L24 63 L30 55 A28 28 0 0 1 27 48 L17 47 L17 41 L27 40 A28 28 0 0 1 30 33 L24 25 L30 19 L38 25 A28 28 0 0 1 45 22 Z" fill="#4FA3E0" />
+          <circle cx="50" cy="50" r="12" fill="none" stroke="#3A3D42" strokeWidth="8" />
+        </g>
+      </svg>
+      {/* raios cortando a tela */}
+      <svg style={{ position: "absolute", inset: 0, width: "100%", height: "100%" }} preserveAspectRatio="none" viewBox="0 0 400 800">
+        <path className="jb-bolt jb-bolt-1" d="M-20 120 L120 180 L80 220 L260 300" fill="none" stroke="#F2C230" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+        <path className="jb-bolt jb-bolt-2" d="M420 400 L280 460 L330 500 L150 580" fill="none" stroke="#4FA3E0" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+        <path className="jb-bolt jb-bolt-3" d="M60 780 L160 700 L120 660 L240 560" fill="none" stroke="#F2C230" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+      </svg>
+    </div>
   );
 }
 
@@ -1767,7 +1780,9 @@ export default function Cosmo({ onSignOut, userEmail } = {}) {
   }
 
   return (
-    <div style={{ minHeight: "100vh", background: `radial-gradient(ellipse at 50% -10%, #1C1C20 0%, ${C.bg1} 55%, ${C.bg0} 100%)`, fontFamily: SANS, color: C.ink, position: "relative", paddingBottom: 84 }}>
+    <div style={{ minHeight: "100vh", background: `radial-gradient(ellipse at 50% -10%, #4A4E54 0%, ${C.bg1} 55%, ${C.bg0} 100%)`, fontFamily: SANS, color: C.ink, position: "relative", paddingBottom: 84, overflow: "hidden" }}>
+      <JackboyBackdrop />
+      <div style={{ position: "relative", zIndex: 1 }}>
       <style>{cosmoCss}</style>
       <div style={{ position: "fixed", top: 0, left: 0, right: 0, height: 1, background: "linear-gradient(90deg,transparent,rgba(255,255,255,0.3),transparent)", zIndex: 50 }} />
 
@@ -1835,9 +1850,10 @@ export default function Cosmo({ onSignOut, userEmail } = {}) {
           <ChatScreen conversations={conversations} persistConversations={persistConversations} projects={projects} tasks={tasks} events={events} marks={marks} ideas={ideas} hubLayout={hubLayout} applyOps={applyOps} memory={memory} pendingChat={pendingChat} clearPendingChat={() => setPendingChat(null)} />
         )}
       </div>
+      </div>
 
       {/* nav HUD */}
-      <div style={{ position: "fixed", bottom: 0, left: 0, right: 0, background: "rgba(6,9,18,0.92)", backdropFilter: "blur(8px)", borderTop: `0.5px solid rgba(255,255,255,0.1)`, zIndex: 40 }}>
+      <div style={{ position: "fixed", bottom: 0, left: 0, right: 0, background: "rgba(42,45,50,0.92)", backdropFilter: "blur(8px)", borderTop: `0.5px solid rgba(255,255,255,0.12)`, zIndex: 40 }}>
         <div style={{ display: "flex", gap: 4, padding: 7, maxWidth: 900, margin: "0 auto" }}>
           {TABS.map((t) => {
             const on = tab === t.id;
@@ -2486,9 +2502,9 @@ function AgendaScreen({ projects, events, persistEvents, marks, persistMarks, to
   // um evento aparece nesta semana se: é recorrente (toda semana),
   // OU tem week == viewWeek, OU (compatibilidade) não tem week e estamos na semana atual.
   function eventInWeek(e) {
-    if (e.recurring) return true;
-    if (e.week) return e.week === viewWeek;
-    return isThisWeek; // eventos antigos sem carimbo caem na semana atual
+    if (e.recurring) return true;            // recorrente: aparece toda semana
+    if (e.week) return e.week === viewWeek;  // carimbado: só na sua semana
+    return isThisWeek;                        // legado sem carimbo: cai na semana atual
   }
 
   // montar por dia: eventos (filtrados pela semana) + subtarefas
@@ -3428,6 +3444,32 @@ const cosmoCss = `
 .cosmo-current { stroke-dasharray: 22 145; stroke-dashoffset: 167; opacity: 1; animation: cosmoCurrent 1.9s linear infinite; filter: drop-shadow(0 0 5px #F0DFB8) drop-shadow(0 0 2px #FFFFFF); }
 @keyframes cosmoCurrent { from { stroke-dashoffset: 167; } to { stroke-dashoffset: 0; } }
 
+/* corrente elétrica percorrendo o hexágono do logo J */
+.jackboy-current { stroke-dasharray: 30 200; stroke-dashoffset: 230; animation: jbCurrent 2.4s linear infinite; filter: drop-shadow(0 0 4px #F7D65A); }
+@keyframes jbCurrent { from { stroke-dashoffset: 230; } to { stroke-dashoffset: 0; } }
+
+/* engrenagens girando no fundo */
+.jb-gear-cw { animation: jbGearCW 22s linear infinite; }
+.jb-gear-ccw { animation: jbGearCCW 28s linear infinite; }
+@keyframes jbGearCW { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
+@keyframes jbGearCCW { from { transform: rotate(0deg); } to { transform: rotate(-360deg); } }
+
+/* raios cortando a tela — traço que corre e pisca */
+.jb-bolt { stroke-dasharray: 40 260; opacity: 0; filter: drop-shadow(0 0 3px currentColor); }
+.jb-bolt-1 { animation: jbBolt 4.5s ease-in-out infinite; }
+.jb-bolt-2 { animation: jbBolt 5.5s ease-in-out infinite 1.6s; }
+.jb-bolt-3 { animation: jbBolt 6s ease-in-out infinite 3s; }
+@keyframes jbBolt {
+  0% { stroke-dashoffset: 300; opacity: 0; }
+  8% { opacity: 0.9; }
+  22% { stroke-dashoffset: 0; opacity: 0.7; }
+  30% { opacity: 0; }
+  100% { opacity: 0; stroke-dashoffset: 0; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .jb-gear-cw, .jb-gear-ccw, .jb-bolt, .jackboy-current, .cosmo-current { animation: none; }
+}
+
 /* transição ao trocar de aba: entra deslizando e clareando */
 .cosmo-fade { animation: cosmoFade 0.4s cubic-bezier(0.22, 1, 0.36, 1); }
 @keyframes cosmoFade { from { opacity: 0; transform: translateY(12px) scale(0.99); } to { opacity: 1; transform: translateY(0) scale(1); } }
@@ -3439,8 +3481,8 @@ const cosmoCss = `
 .cosmo-chip { display: inline-flex; align-items: center; gap: 6px; font-size: 11.5px; font-family: ${SANS}; color: ${C.inkSoft}; background: transparent; border: 0.5px solid rgba(255,255,255,0.12); padding: 9px 15px; border-radius: 9px; cursor: pointer; transition: transform 0.12s ease, border-color 0.2s, background 0.2s, color 0.2s; }
 .cosmo-chip:hover { border-color: rgba(255,255,255,0.24); color: ${C.ink}; }
 .cosmo-chip:active { transform: scale(0.97); }
-.cosmo-chip-primary { color: #16161A; background: ${C.ink}; border-color: ${C.ink}; font-weight: 500; }
-.cosmo-chip-primary:hover { background: #FFFFFF; color: #16161A; }
+.cosmo-chip-primary { color: #0A2B45; background: ${C.blue}; border-color: ${C.blue}; font-weight: 500; }
+.cosmo-chip-primary:hover { background: ${C.blueLight}; color: #0A2B45; }
 .cosmo-chip:disabled { opacity: 0.5; cursor: default; }
 .cosmo-syscard { background: rgba(255,255,255,0.025); border: 0.5px solid rgba(255,255,255,0.08); border-radius: 12px; padding: 13px; cursor: pointer; transition: border-color 0.2s, transform 0.12s ease, background 0.2s; }
 .cosmo-syscard:hover { border-color: rgba(255,255,255,0.16); background: rgba(255,255,255,0.04); }
