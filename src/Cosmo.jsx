@@ -50,17 +50,17 @@ import {
 
 // ============ PALETA (azul elétrico / HUD Stark-Wayne) ============
 const C = {
-  // fundos: grafite claro (meio-termo), tema de engenharia
-  bg0: "#3A3D42",          // fundo base (grafite médio)
-  bg1: "#42454B",          // um degrau acima
-  panel: "rgba(255,255,255,0.06)",
-  panelBorder: "rgba(255,255,255,0.10)",
-  // textos: claros sobre o grafite
+  // fundos: preto (estilo C.O.S.M.O.), com leve profundidade
+  bg0: "#0A0A0C",          // fundo base (quase preto)
+  bg1: "#141519",          // um degrau acima (painéis/cards)
+  panel: "rgba(255,255,255,0.05)",
+  panelBorder: "rgba(255,255,255,0.09)",
+  // textos: claros sobre o preto
   ink: "#F4F5F7",
   inkSoft: "#D2D4D8",
   inkMute: "#9DA0A6",
-  inkFaint: "#71747A",
-  // ACENTOS: azul + amarelo (engenharia elétrica)
+  inkFaint: "#6E7178",
+  // ACENTOS: azul + amarelo (engenharia elétrica) — mantidos
   blue: "#4FA3E0",         // azul principal (botões, ícones ativos)
   blueBright: "#F2C230",   // AMARELO de destaque (ênfase, ativo) — dupla com o azul
   blueLight: "#7FC0EE",    // azul claro suave
@@ -69,7 +69,7 @@ const C = {
   blueLine: "rgba(79,163,224,0.45)",
   gold: "#F2C230",         // amarelo (compromissos, estrelas)
   danger: "#E8705F",
-  green: "#5FB58C",
+  green: "#43C08A",        // verde vivo — usado nos check/toggles concluídos
   // cores elétricas nomeadas (uso direto nas animações/detalhes)
   amarelo: "#F2C230",
   azul: "#4FA3E0",
@@ -1097,7 +1097,7 @@ function chatSystem(projects, events, marks, hubLayout, ideas, tasks, memory) {
     .join("\n");
   const tsk = (tasks || [])
     .filter((t) => !t.done)
-    .map((t) => `- id:${t.id} | "${t.title}" [${t.area}]${t.day ? " " + t.day : ""}`)
+    .map((t) => `- id:${t.id} | "${t.title}" [${t.area}]${t.day ? " " + t.day : ""}${t.time ? " " + t.time : ""}`)
     .join("\n");
   const evs = events.map((e) => `- id:${e.id} | "${e.title}" (${e.day} ${e.time || ""}) [${e.area}]`).join("\n");
   const mk = (marks || [])
@@ -1148,7 +1148,7 @@ Quando o Jackson der um COMANDO ou pedir uma AÇÃO, execute (não filosofe — 
 CRIAR (executa na hora):
 {"op":"criar_projeto","title":"...","area":"<area>","deadline":"dd/mm/aaaa ou null"}
 {"op":"add_subtarefa","projeto_id":"<id>","title":"...","day":"<dia ou null>","priority":"alta|media|baixa"}
-{"op":"criar_tarefa","title":"...","area":"<area>","day":"<dia ou null>","priority":"alta|media|baixa"}
+{"op":"criar_tarefa","title":"...","area":"<area>","day":"<dia ou null>","time":"<HH:MM ou null>","priority":"alta|media|baixa"}
 {"op":"criar_evento","title":"...","day":"<dia>","time":"HH:MM ou vazio","area":"<area>"}
 {"op":"criar_data","title":"...","date":"dd/mm ou dd/mm/aaaa","area":"<area>","recurring":true/false}
 {"op":"criar_ideia","title":"..."}
@@ -1182,7 +1182,11 @@ REGRAS:
 - Só inclua <OPS> quando houver ação real. Formato do bloco: <OPS>[{...},{...}]</OPS> — um array JSON válido, sem texto dentro dele além do JSON.
 - Ações destrutivas: primeiro turno = pedir confirmação (sem <OPS>); segundo turno (após "sim/confirmo") = executar com <OPS>.
 - CONVERSA vs COMANDO: se for papo/reflexão/opinião, responda como interlocutor (modo conversa, pode debater). Se for ordem de ação, execute (modo execução, sem questionar).
-- MEMÓRIA: você tem um dossiê do Jackson que persiste entre TODAS as conversas. Use-o para ser pessoal e contextual. Quando ele contar algo importante e duradouro sobre si (um sentimento recorrente, uma decisão, uma preferência, um fato de vida, algo que ele pede pra você lembrar), registre com a operação "lembrar". Não registre trivialidades nem coisas passageiras — só o que vale a pena saber no futuro. Se ele disser "lembre-se disso" ou "não esqueça", sempre registre.`;
+- MEMÓRIA: você tem um dossiê do Jackson que persiste entre TODAS as conversas. Use-o para ser pessoal e contextual. Quando ele contar algo importante e duradouro sobre si (um sentimento recorrente, uma decisão, uma preferência, um fato de vida, algo que ele pede pra você lembrar), registre com a operação "lembrar". Não registre trivialidades nem coisas passageiras — só o que vale a pena saber no futuro. Se ele disser "lembre-se disso" ou "não esqueça", sempre registre.
+- TAREFAS COM HORÁRIO: uma tarefa pode ter horário ("time" no formato HH:MM). Se o Jackson disser "me lembra de ligar pro cliente às 15h", crie a tarefa com day e time. Tarefas com horário viram lembretes com aviso 1h e 30min antes, igual aos compromissos. Se ele der um horário, sempre preencha o "time".
+- SEJA PROATIVO (gerente, não só executor): você é o gestor da vida organizada do Jackson, não um robô que só obedece. Quando fizer sentido, tome iniciativa DENTRO da conversa: se ele criar um projeto sem etapas, ofereça quebrar em subtarefas; se a agenda do dia estiver vazia mas houver tarefas soltas, sugira encaixá-las; se você notar um compromisso e uma tarefa relacionada, conecte os dois; se algo parece esquecido ou atrasado, aponte com gentileza. Proatividade é SUGERIR e, quando ele topar, EXECUTAR via <OPS> — nunca criar/apagar coisas grandes sem ele pedir ou concordar.
+- CRUZE OS DADOS: você enxerga projetos, tarefas, eventos, datas e hábitos ao mesmo tempo. Use isso. Ao planejar o dia, olhe a agenda E as tarefas juntas ("você tem reunião às 14h e 3 tarefas soltas; que tal fazer as duas rápidas de manhã?"). Ao ver prazos apertados, alerte. Ao ver um padrão (ele sempre adia certo tipo de tarefa), comente. Seu valor está em conectar o que ele não conecta sozinho.
+- EQUILÍBRIO: proatividade não é encher o Jackson de perguntas nem tomar conta. Uma sugestão boa por vez, no momento certo, vale mais que dez. Leia o clima: se ele está executando rápido, seja objetivo; se está refletindo, aí sim provoque e organize junto.`;
 }
 
 function greetingSystem(projects, events, marks) {
@@ -1241,7 +1245,7 @@ function briefingContext(projects, events, marks, tasks, todayId, mode) {
     .sort((a, b) => a.d - b.d)
     .map((m) => `${m.title} (${countdownLabel(m.date)})`);
   // tarefas avulsas pendentes (com dia)
-  const avulsas = (tasks || []).filter((t) => !t.done).map((t) => `${t.title}${t.day ? " ["+t.day+"]" : ""}`);
+  const avulsas = (tasks || []).filter((t) => !t.done).map((t) => `${t.title}${t.day ? " ["+t.day+"]" : ""}${t.time ? " "+t.time : ""}`);
   // subtarefas de projetos pendentes (com nome do projeto)
   const subsPend = [];
   (projects || []).forEach((p) => {
@@ -1611,11 +1615,12 @@ export default function Cosmo({ onSignOut, userEmail } = {}) {
   }
 
   // ---------- tarefas avulsas ----------
-  function addTask(title, area, day, week) {
+  function addTask(title, area, day, week, time) {
     if (!title || !title.trim()) return null;
     const id = genId();
     const hasDay = (day && DAY_IDS.includes(day));
-    persistTasks([...tasks, { id, title: title.trim(), area: validArea(area), day: hasDay ? day : null, week: hasDay ? (week || thisWeekKey()) : null, done: false, priority: "media", createdAt: Date.now() }]);
+    const hora = (time && /^\d{1,2}:\d{2}$/.test(time)) ? time : null;
+    persistTasks([...tasks, { id, title: title.trim(), area: validArea(area), day: hasDay ? day : null, week: hasDay ? (week || thisWeekKey()) : null, time: hora, done: false, priority: "media", createdAt: Date.now() }]);
     return id;
   }
   function toggleTask(taskId) {
@@ -1750,7 +1755,8 @@ export default function Cosmo({ onSignOut, userEmail } = {}) {
           }
           case "criar_tarefa": {
             const _d = validDay(op.day);
-            const nova = { id: genId(), title: String(op.title || "").trim(), area: validArea(op.area), day: _d, week: _d ? thisWeekKey() : null, done: false, priority: validPriority(op.priority), createdAt: Date.now() };
+            const _t = (op.time && /^\d{1,2}:\d{2}$/.test(op.time)) ? op.time : null;
+            const nova = { id: genId(), title: String(op.title || "").trim(), area: validArea(op.area), day: _d, week: _d ? thisWeekKey() : null, time: _t, done: false, priority: validPriority(op.priority), createdAt: Date.now() };
             taskFns.push((arr) => [...arr, nova]);
             touched.task = true; done.push("tarefa criada: " + op.title);
             break;
@@ -3416,7 +3422,7 @@ function ProjectsScreen({ projects, openProjectId, setOpenProjectId, breakdownPr
             {(p.subtasks || []).map((s) => (
               <div key={s.id} className="cosmo-sub" style={{ borderLeft: `2px solid ${s.done ? C.blueDeep : C.blueBright}` }}>
                 <button onClick={() => toggleSub(p.id, s.id)} className="cosmo-icon-btn" aria-label="Concluir">
-                  {s.done ? <CheckCircle size={15} color={C.blue} /> : <Circle size={15} color={C.blueBright} />}
+                  {s.done ? <CheckCircle size={15} color={C.green} /> : <Circle size={15} color={C.blueBright} />}
                 </button>
                 <span style={{ flex: 1, fontSize: 12, color: s.done ? C.inkMute : C.ink, textDecoration: s.done ? "line-through" : "none" }}>{s.title}</span>
                 {!s.done && (
@@ -3473,6 +3479,7 @@ function ProjectsScreen({ projects, openProjectId, setOpenProjectId, breakdownPr
 function TasksScreen({ tasks, mergedTasks, addTask, toggleTask, toggleAnyTask, deleteTask, deleteAnyTask, setTaskDay, setAnyTaskDay, habitLog, toggleHabit, todayId }) {
   const [newTaskText, setNewTaskText] = useState("");
   const [newTaskDay, setNewTaskDay] = useState("");
+  const [newTaskTime, setNewTaskTime] = useState("");
   const [viewWeek, setViewWeek] = useState(() => thisWeekKey());
   const isThisWeek = viewWeek === thisWeekKey();
   const k = todayKey();
@@ -3504,7 +3511,7 @@ function TasksScreen({ tasks, mergedTasks, addTask, toggleTask, toggleAnyTask, d
       <div style={{ display: "flex", alignItems: "center", gap: 9, background: "rgba(255,255,255,0.03)", border: `0.5px solid ${C.panelBorder}`, borderRadius: 11, padding: "10px 12px" }}>
         <button onClick={() => toggleAnyTask(t)} className="cosmo-icon-btn" aria-label="Concluir"><Circle size={16} color={C.inkFaint} /></button>
         <span style={{ width: 6, height: 6, borderRadius: "50%", background: AREA_COLOR[t.area] || C.inkMute, flexShrink: 0 }} />
-        <span style={{ flex: 1, fontSize: 12.5, color: C.ink }}>{t.title}{t._kind === "sub" ? <span style={{ fontSize: 10, color: C.inkMute }}> · {t._projectTitle}</span> : null}</span>
+        <span style={{ flex: 1, fontSize: 12.5, color: C.ink }}>{t.title}{t.time ? <span style={{ fontFamily: MONO, fontSize: 10, color: C.gold }}> · {t.time}</span> : null}{t._kind === "sub" ? <span style={{ fontSize: 10, color: C.inkMute }}> · {t._projectTitle}</span> : null}</span>
         <select value={t.day || ""} onChange={(e) => setAnyTaskDay(t, e.target.value || null, e.target.value ? viewWeek : null)} className="cosmo-day-select" aria-label="Dia da tarefa">
           <option value="">sem dia</option>
           {DAYS.map((d) => (<option key={d.id} value={d.id}>{d.label}</option>))}
@@ -3532,7 +3539,7 @@ function TasksScreen({ tasks, mergedTasks, addTask, toggleTask, toggleAnyTask, d
           const on = !!todayLog[h.id];
           return (
             <button key={h.id} onClick={() => toggleHabit(h.id)} style={{ display: "flex", alignItems: "center", gap: 11, background: on ? "rgba(255,255,255,0.05)" : "rgba(255,255,255,0.03)", border: `0.5px solid ${on ? C.blueLine : C.panelBorder}`, borderRadius: 11, padding: "11px 13px", cursor: "pointer", textAlign: "left", transition: "background 0.2s" }}>
-              {on ? <CheckCircle size={18} color={C.blueBright} /> : <Circle size={18} color={C.inkFaint} />}
+              {on ? <CheckCircle size={18} color={C.green} /> : <Circle size={18} color={C.inkFaint} />}
               <IC size={15} color={on ? C.blueLight : C.inkMute} />
               <span style={{ flex: 1, fontSize: 13, color: on ? C.ink : C.inkSoft }}>{h.label}</span>
               {on && <span style={{ fontFamily: MONO, fontSize: 8.5, color: C.blueLight }}>FEITO</span>}
@@ -3554,13 +3561,14 @@ function TasksScreen({ tasks, mergedTasks, addTask, toggleTask, toggleAnyTask, d
       {!isThisWeek && (
         <button onClick={() => setViewWeek(thisWeekKey())} style={{ display: "block", margin: "0 auto 12px", background: "none", border: "none", color: C.blueLight, fontFamily: MONO, fontSize: 9.5, cursor: "pointer", letterSpacing: "0.08em" }}>← voltar pra esta semana</button>
       )}
-      <div style={{ display: "flex", gap: 6, marginBottom: 16 }}>
-        <input className="cosmo-input" style={{ flex: 1 }} placeholder="Nova tarefa..." value={newTaskText} onChange={(e) => setNewTaskText(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter" && newTaskText.trim()) { addTask(newTaskText, "pessoal", newTaskDay || null, newTaskDay ? viewWeek : null); setNewTaskText(""); setNewTaskDay(""); } }} />
-        <select value={newTaskDay} onChange={(e) => setNewTaskDay(e.target.value)} className="cosmo-day-select" aria-label="Dia">
+      <div style={{ display: "flex", gap: 6, marginBottom: 16, flexWrap: "wrap" }}>
+        <input className="cosmo-input" style={{ flex: "1 1 100%", minWidth: 0 }} placeholder="Nova tarefa..." value={newTaskText} onChange={(e) => setNewTaskText(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter" && newTaskText.trim()) { addTask(newTaskText, "pessoal", newTaskDay || null, newTaskDay ? viewWeek : null, newTaskTime || null); setNewTaskText(""); setNewTaskDay(""); setNewTaskTime(""); } }} />
+        <select value={newTaskDay} onChange={(e) => setNewTaskDay(e.target.value)} className="cosmo-day-select" aria-label="Dia" style={{ flex: 1 }}>
           <option value="">sem dia</option>
           {DAYS.map((d) => (<option key={d.id} value={d.id}>{d.label}</option>))}
         </select>
-        <button onClick={() => { if (newTaskText.trim()) { addTask(newTaskText, "pessoal", newTaskDay || null, newTaskDay ? viewWeek : null); setNewTaskText(""); setNewTaskDay(""); } }} className="cosmo-mini-btn" style={{ color: C.blueBright, borderColor: C.blueLine }}><Plus size={12} /> Add</button>
+        <input type="time" value={newTaskTime} onChange={(e) => setNewTaskTime(e.target.value)} className="cosmo-day-select" aria-label="Horário" title="Horário (opcional)" style={{ width: 92 }} />
+        <button onClick={() => { if (newTaskText.trim()) { addTask(newTaskText, "pessoal", newTaskDay || null, newTaskDay ? viewWeek : null, newTaskTime || null); setNewTaskText(""); setNewTaskDay(""); setNewTaskTime(""); } }} className="cosmo-mini-btn" style={{ color: C.blueBright, borderColor: C.blueLine }}><Plus size={12} /> Add</button>
       </div>
 
       {pending.length === 0 && (
@@ -3584,7 +3592,7 @@ function TasksScreen({ tasks, mergedTasks, addTask, toggleTask, toggleAnyTask, d
           <div style={{ display: "flex", flexDirection: "column", gap: 5 }}>
             {doneToday.map((t) => (
               <div key={t._kind + t.id} style={{ display: "flex", alignItems: "center", gap: 9, padding: "8px 12px", opacity: 0.55 }}>
-                <button onClick={() => toggleAnyTask(t)} className="cosmo-icon-btn"><CheckCircle size={15} color={C.blue} /></button>
+                <button onClick={() => toggleAnyTask(t)} className="cosmo-icon-btn"><CheckCircle size={15} color={C.green} /></button>
                 <span style={{ flex: 1, fontSize: 12, color: C.inkMute, textDecoration: "line-through" }}>{t.title}{t._kind === "sub" ? <span style={{ fontSize: 10, color: C.inkFaint }}> · {t._projectTitle}</span> : null}</span>
                 <button onClick={() => deleteAnyTask(t)} className="cosmo-icon-btn"><Trash2 size={12} color={C.inkFaint} /></button>
               </div>

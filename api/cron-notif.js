@@ -151,6 +151,34 @@ export default async function handler(req, res) {
         }
       }
 
+      // --- tarefas de HOJE COM HORÁRIO: mesmos dois avisos (1h e 30min antes) ---
+      for (const t of tarefas) {
+        if (!t || t.done || !t.time || t.day !== hojeId) continue;
+        const [th, tm] = String(t.time).split(":").map((n) => parseInt(n, 10));
+        if (isNaN(th)) continue;
+        const minutosTarefa = th * 60 + (tm || 0);
+        const minutosAgora = horaAtual * 60 + agora.getUTCMinutes();
+        const faltam = minutosTarefa - minutosAgora;
+        const marcos = [
+          { id: "60", min: 60, janela: 20, texto: "em 1 hora" },
+          { id: "30", min: 30, janela: 20, texto: "em 30 minutos" },
+        ];
+        for (const mc of marcos) {
+          if (faltam > mc.min - mc.janela && faltam <= mc.min) {
+            const chave = `av:${hojeKey}:tk-${t.id}:${mc.id}`;
+            if (log[chave]) continue;
+            await enviarPara(lista, {
+              title: "Tarefa com hora marcada",
+              body: `${t.title} às ${t.time} — ${mc.texto}`,
+              tag: `tk-${t.id}`,
+              url: "/",
+            });
+            log[chave] = true;
+            logMudou = true;
+          }
+        }
+      }
+
       // --- resumo de tarefas pela manhã (uma vez por dia) ---
       if (ehManha) {
         const chaveManha = `av:${hojeKey}:tarefas-manha`;
