@@ -657,7 +657,10 @@ async function pedirPermissaoNotif() {
   } catch (e) { return "denied"; }
 }
 function notifLigado() {
-  try { return localStorage.getItem(NOTIF_KEY) === "sim" && notifPermission() === "granted"; } catch (e) { return false; }
+  // A fonte da verdade é a PREFERÊNCIA salva ("o usuário quer receber?").
+  // A permissão do navegador é checada à parte e re-sincronizada ao abrir o app;
+  // não a exigimos aqui pra o toggle não "piscar desligado" quando o app reabre.
+  try { return localStorage.getItem(NOTIF_KEY) === "sim"; } catch (e) { return false; }
 }
 function setNotifLigado(v) {
   try { localStorage.setItem(NOTIF_KEY, v ? "sim" : "nao"); } catch (e) {}
@@ -720,6 +723,25 @@ async function desinscreverPush() {
       try { await sub.unsubscribe(); } catch (e) {}
     }
   } catch (e) {}
+}
+
+// Re-sincroniza a inscrição ao abrir o app: se o usuário deixou as notificações
+// LIGADAS e a permissão ainda é "granted", garante que a inscrição existe e está
+// registrada no servidor — sem precisar do app aberto em segundo plano. Se a
+// permissão foi revogada no sistema, desliga a preferência pra o toggle refletir a verdade.
+async function ressincronizarPush(userId) {
+  try {
+    if (localStorage.getItem(NOTIF_KEY) !== "sim") return { ligado: false };
+    if (notifPermission() !== "granted") {
+      // usuário tirou a permissão nas configs do sistema — reflete isso
+      try { localStorage.setItem(NOTIF_KEY, "nao"); } catch (e) {}
+      return { ligado: false, permissaoPerdida: true };
+    }
+    const ok = await inscreverPush(userId);   // getSubscription reaproveita se já existe
+    return { ligado: true, inscrito: ok };
+  } catch (e) {
+    return { ligado: true, inscrito: false };
+  }
 }
 function mostrarNotif(titulo, corpo, extra) {
   try {
@@ -1538,6 +1560,17 @@ export default function Cosmo({ onSignOut, userEmail } = {}) {
       try { checarLembretesHoje(events, tasks, projects); } catch (e) {}
     }, 1500);
     return () => clearTimeout(t);
+    // eslint-disable-next-line
+  }, [loaded]);
+
+  // Re-sincroniza a inscrição de push ao abrir o app (mantém viva sem app em 2º plano).
+  // Se a permissão foi revogada no sistema, ressincronizarPush ajusta a preferência salva,
+  // e a tela de Chat reflete isso no toggle na próxima leitura.
+  useEffect(() => {
+    if (!loaded) return;
+    (async () => {
+      try { await ressincronizarPush(getStorageUser()); } catch (e) {}
+    })();
     // eslint-disable-next-line
   }, [loaded]);
 
