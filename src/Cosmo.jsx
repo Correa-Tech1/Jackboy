@@ -48,6 +48,7 @@ import {
   LogOut,
 } from "lucide-react";
 import ServicosScreen from "./Servicos.jsx";
+import { LOGO_CORREA_TECH } from "./logoCorreaTech.js";
 
 // ============ PALETA (azul elétrico / HUD Stark-Wayne) ============
 const C = {
@@ -89,6 +90,7 @@ const AREA_COLOR = {
 
 const MONO = "'JetBrains Mono', ui-monospace, monospace";
 const SANS = "'Inter', system-ui, sans-serif";
+function money(n) { const v = Number(n) || 0; return "R$ " + v.toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 }); }
 
 // ============ ÍCONES POR ÁREA ============
 const AREA_ICONS = {
@@ -1161,6 +1163,7 @@ CRIAR (executa na hora):
 {"op":"concluir_tarefa","tarefa_id":"<id>"}
 {"op":"mover_tarefa","tarefa_id":"<id>","day":"<dia ou null>"}
 {"op":"layout","ordem":["habits","verse",...]}
+{"op":"criar_orcamento","cliente":"<nome>","contato":"<telefone ou vazio>","titulo":"<descrição curta do serviço>","servicos":[{"nome":"...","preco":<número>,"qtd":<número>}],"materiais":[{"nome":"...","preco":<número>,"qtd":<número>,"unidade":"und|m|cx"}],"obs":"<observações ou vazio>"}
 
 APAGAR / DESTRUTIVO (NÃO execute direto — peça confirmação em texto primeiro):
 Para apagar_projeto, apagar_tarefa, apagar_evento, apagar_data, apagar_ideia, remover_subtarefa e concluir_projeto: pergunte "Confirma?" no texto e só inclua a operação no <OPS> DEPOIS que o Jackson confirmar na próxima mensagem. Formatos:
@@ -1186,7 +1189,7 @@ REGRAS:
 - MEMÓRIA: você tem um dossiê do Jackson que persiste entre TODAS as conversas. Use-o para ser pessoal e contextual. Quando ele contar algo importante e duradouro sobre si (um sentimento recorrente, uma decisão, uma preferência, um fato de vida, algo que ele pede pra você lembrar), registre com a operação "lembrar". Não registre trivialidades nem coisas passageiras — só o que vale a pena saber no futuro. Se ele disser "lembre-se disso" ou "não esqueça", sempre registre.
 - TAREFAS COM HORÁRIO: uma tarefa pode ter horário ("time" no formato HH:MM). Se o Jackson disser "me lembra de ligar pro cliente às 15h", crie a tarefa com day e time. Tarefas com horário viram lembretes com aviso 1h e 30min antes, igual aos compromissos. Se ele der um horário, sempre preencha o "time".
 - SEJA PROATIVO (gerente, não só executor): você é o gestor da vida organizada do Jackson, não um robô que só obedece. Quando fizer sentido, tome iniciativa DENTRO da conversa: se ele criar um projeto sem etapas, ofereça quebrar em subtarefas; se a agenda do dia estiver vazia mas houver tarefas soltas, sugira encaixá-las; se você notar um compromisso e uma tarefa relacionada, conecte os dois; se algo parece esquecido ou atrasado, aponte com gentileza. Proatividade é SUGERIR e, quando ele topar, EXECUTAR via <OPS> — nunca criar/apagar coisas grandes sem ele pedir ou concordar.
-- CRUZE OS DADOS: você enxerga projetos, tarefas, eventos, datas e hábitos ao mesmo tempo. Use isso. Ao planejar o dia, olhe a agenda E as tarefas juntas ("você tem reunião às 14h e 3 tarefas soltas; que tal fazer as duas rápidas de manhã?"). Ao ver prazos apertados, alerte. Ao ver um padrão (ele sempre adia certo tipo de tarefa), comente. Seu valor está em conectar o que ele não conecta sozinho.
+- ORÇAMENTOS (você é o braço comercial do Jackson): quando ele descrever um serviço pra orçar — cliente, mão de obra, materiais, valores — monte o orçamento completo com a operação "criar_orcamento". Ele pode falar solto ("faz um orçamento pro Tiago, instalação de segurança, mão de obra 963 reais, e 4 chaves fim de curso") e você organiza em serviços e materiais, com preços e quantidades. Se faltar um preço, pode perguntar OU deixar em branco (preco 0) pra ele completar depois. Sempre confirme o que montou em texto ("Montei o orçamento pro Tiago: mão de obra R$963, mais os materiais. Total X. Tá na aba Serviços, é só gerar o PDF."). Quando ele mandar criar, inclua o <OPS> na mesma resposta. Materiais geralmente não têm preço unitário no orçamento dele — pode deixar preco 0 e só registrar quantidade e unidade, como no modelo dele.
 - EQUILÍBRIO: proatividade não é encher o Jackson de perguntas nem tomar conta. Uma sugestão boa por vez, no momento certo, vale mais que dez. Leia o clima: se ele está executando rápido, seja objetivo; se está refletindo, aí sim provoque e organize junto.`;
 }
 
@@ -1848,6 +1851,37 @@ export default function Cosmo({ onSignOut, userEmail } = {}) {
             }
             break;
           }
+          case "criar_orcamento": {
+            // a IA monta um orçamento inteiro pela conversa
+            const norm = (v) => { const n = parseFloat(String(v).replace(",", ".")); return isNaN(n) ? 0 : n; };
+            const servicos = Array.isArray(op.servicos) ? op.servicos.map((s) => ({
+              id: genId(), nome: String(s.nome || "").trim(), preco: String(norm(s.preco)), qtd: String(s.qtd != null ? s.qtd : 1),
+            })).filter((s) => s.nome) : [];
+            const materiais = Array.isArray(op.materiais) ? op.materiais.map((m) => ({
+              id: genId(), nome: String(m.nome || "").trim(), preco: String(norm(m.preco)), qtd: String(m.qtd != null ? m.qtd : 1), unidade: String(m.unidade || "und"),
+            })).filter((m) => m.nome) : [];
+            const totalServ = servicos.reduce((s, it) => s + norm(it.preco) * norm(it.qtd), 0);
+            const totalMat = materiais.reduce((s, it) => s + norm(it.preco) * norm(it.qtd), 0);
+            const novoOrc = {
+              id: genId(),
+              numero: "ORC-" + Date.now().toString().slice(-6),
+              data: (() => { const d = new Date(); return `${String(d.getDate()).padStart(2,"0")}/${String(d.getMonth()+1).padStart(2,"0")}/${d.getFullYear()}`; })(),
+              cliente: String(op.cliente || "").trim(),
+              contato: String(op.contato || "").trim(),
+              titulo: String(op.titulo || "").trim(),
+              status: "orcado",
+              servicos, materiais, obs: String(op.obs || "").trim(),
+              totalServ, totalMat, total: totalServ + totalMat,
+            };
+            // adiciona cliente se ainda não existe
+            const jaCli = (servData.clientes || []).some((c) => c.nome.toLowerCase() === novoOrc.cliente.toLowerCase());
+            const novosClientes = (novoOrc.cliente && !jaCli)
+              ? [{ id: genId(), nome: novoOrc.cliente, contato: novoOrc.contato, status: "orcado", criadoEm: Date.now() }, ...(servData.clientes || [])]
+              : (servData.clientes || []);
+            persistServ({ clientes: novosClientes, orcamentos: [novoOrc, ...(servData.orcamentos || [])] });
+            done.push("orçamento criado: " + (novoOrc.cliente || novoOrc.titulo || novoOrc.numero) + " (" + money(novoOrc.total) + ")");
+            break;
+          }
           default:
             break;
         }
@@ -2157,11 +2191,19 @@ export default function Cosmo({ onSignOut, userEmail } = {}) {
         {tab === "chat" && (
           <ChatScreen conversations={conversations} persistConversations={persistConversations} projects={projects} tasks={tasks} events={events} marks={marks} ideas={ideas} hubLayout={hubLayout} applyOps={applyOps} memory={memory} pendingChat={pendingChat} clearPendingChat={() => setPendingChat(null)} />
         )}
+
+        {/* rodapé — assinatura Correa Tech */}
+        <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 7, padding: "26px 0 10px", opacity: 0.5 }}>
+          <div style={{ fontSize: 9.5, fontFamily: MONO, letterSpacing: "0.14em", color: C.inkFaint, textTransform: "uppercase" }}>
+            Sistema desenvolvido pela
+          </div>
+          <img src={LOGO_CORREA_TECH} alt="Correa Tech" style={{ width: 84, height: "auto" }} />
+        </div>
       </div>
       </div>
 
       {/* nav HUD */}
-      <div style={{ position: "fixed", bottom: 0, left: 0, right: 0, background: "rgba(42,45,50,0.92)", backdropFilter: "blur(8px)", borderTop: `0.5px solid rgba(255,255,255,0.12)`, zIndex: 40 }}>
+      <div style={{ position: "fixed", bottom: 0, left: 0, right: 0, background: "rgba(12,12,15,0.94)", backdropFilter: "blur(8px)", borderTop: `0.5px solid rgba(255,255,255,0.10)`, zIndex: 40 }}>
         <div style={{ display: "flex", gap: 4, padding: 7, maxWidth: 900, margin: "0 auto" }}>
           {TABS.map((t) => {
             const on = tab === t.id;
