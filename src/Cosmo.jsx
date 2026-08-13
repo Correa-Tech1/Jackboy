@@ -455,19 +455,35 @@ function createRecognizer(onResult, onEnd, onError) {
   rec.lang = "pt-BR";
   rec.continuous = true;      // continua ouvindo mesmo com pausas na fala
   rec.interimResults = true;
-  let committed = "";          // texto já finalizado (acumula entre pausas)
-  rec._stopping = false;       // marca quando o usuário mandou parar de fato
+  // "âncora" = tudo que já foi finalizado em sessões anteriores do reconhecimento.
+  // A cada evento, o texto final da SESSÃO ATUAL é RECONSTRUÍDO do zero a partir do
+  // array de resultados (não acumulado com +=). Isso evita a duplicação do Android,
+  // que reprocessa/reemite resultados já finalizados ("FalaFala JackFala Jack boy").
+  let ancora = "";            // texto consolidado de sessões já encerradas
+  rec._stopping = false;      // marca quando o usuário mandou parar de fato
   rec._running = false;
   rec.onstart = () => { rec._running = true; };
   rec.onresult = (e) => {
     if (rec._stopping) return;
+    let finalSessao = "";
     let interim = "";
-    for (let i = e.resultIndex; i < e.results.length; i++) {
+    // varre TODOS os resultados desta sessão (não a partir de resultIndex),
+    // reconstruindo o texto — reprocessar o mesmo índice não duplica mais.
+    for (let i = 0; i < e.results.length; i++) {
       const t = e.results[i][0].transcript;
-      if (e.results[i].isFinal) committed += t;
+      if (e.results[i].isFinal) finalSessao += t;
       else interim += t;
     }
-    onResult && onResult((committed + interim).trim(), false);
+    const juntar = (a, b) => {
+      a = a.trim(); b = b.trim();
+      if (!a) return b;
+      if (!b) return a;
+      return a + " " + b;
+    };
+    const textoAtual = juntar(juntar(ancora, finalSessao), interim);
+    onResult && onResult(textoAtual.trim(), false);
+    // guarda o final desta sessão pra virar âncora se o reconhecimento reiniciar
+    rec._finalSessao = finalSessao.trim();
   };
   rec.onerror = (e) => {
     const err = e.error || "erro";
@@ -477,11 +493,18 @@ function createRecognizer(onResult, onEnd, onError) {
   };
   rec.onend = () => {
     rec._running = false;
-    // só reinicia se o usuário NÃO mandou parar (mantém ouvindo nas pausas)
+    // consolida o que foi finalizado nesta sessão dentro da âncora
+    if (rec._finalSessao) {
+      ancora = (ancora ? ancora + " " : "") + rec._finalSessao;
+      ancora = ancora.trim();
+      rec._finalSessao = "";
+    }
+    // só reinicia se o usuário NÃO mandou parar (mantém ouvindo nas pausas).
+    // Ao reiniciar, o array de resultados zera — mas a âncora preserva o já dito.
     if (!rec._stopping) {
       try { rec.start(); return; } catch (e) { /* já parou */ }
     }
-    onEnd && onEnd(committed.trim());
+    onEnd && onEnd(ancora.trim());
   };
   // desligamento REAL: marca stopping, remove handlers e libera o microfone (abort)
   rec.forceStop = () => {
