@@ -2,7 +2,7 @@
 //  O CARTEIRO — roda de hora em hora (chamado pelo cron-job.org).
 //  1) Lê os compromissos e tarefas de cada usuário no Supabase.
 //  2) Descobre o que deve ser avisado nesta hora:
-//     - Compromisso: avisa quando falta ~1h ou menos pra ele.
+//     - Compromisso: dois avisos, 1h antes e 30min antes.
 //     - Tarefas: um resumo pela manhã (primeira rodada do dia).
 //  3) Dispara o push pros aparelhos inscritos, sem repetir o mesmo aviso.
 // ============================================================
@@ -117,7 +117,9 @@ export default async function handler(req, res) {
       const log = logByUser[userId] || {};       // { "avisado:2026-08-13:ev-<id>": true, ... }
       let logMudou = false;
 
-      // --- compromissos de HOJE que estão a ~1h ou menos de distância ---
+      // --- compromissos de HOJE: dois avisos, 1h antes e 30min antes ---
+      // O cron roda de 30 em 30 min. Cada "marco" tem sua própria etiqueta, então
+      // o de 1h e o de 30min são independentes e nenhum se repete.
       for (const e of eventos) {
         if (!e || e.day !== hojeId || !e.time) continue;
         const [h, min] = String(e.time).split(":").map((n) => parseInt(n, 10));
@@ -125,18 +127,27 @@ export default async function handler(req, res) {
         const minutosEvento = h * 60 + (min || 0);
         const minutosAgora = horaAtual * 60 + agora.getUTCMinutes();
         const faltam = minutosEvento - minutosAgora;
-        // avisa quando falta entre 0 e 75 min (pega o "1h antes" mesmo o cron rodando na hora cheia)
-        if (faltam >= 0 && faltam <= 75) {
-          const chave = `av:${hojeKey}:ev-${e.id}`;
-          if (log[chave]) continue;              // já avisei este compromisso
-          await enviarPara(lista, {
-            title: "Compromisso chegando",
-            body: `${e.title} às ${e.time}`,
-            tag: `ev-${e.id}`,
-            url: "/",
-          });
-          log[chave] = true;
-          logMudou = true;
+
+        // marcos de aviso: cada um dispara UMA vez, na primeira rodada que cair na janela.
+        // janela de ~20 min cobre bem o passo de 30 min do cron sem sobrepor os marcos.
+        const marcos = [
+          { id: "60", min: 60, janela: 20, texto: "em 1 hora" },   // avisa quando faltam ~41–60 min
+          { id: "30", min: 30, janela: 20, texto: "em 30 minutos" }, // avisa quando faltam ~11–30 min
+        ];
+        for (const mc of marcos) {
+          // dispara quando faltam entre (marco - janela) e marco, inclusive
+          if (faltam > mc.min - mc.janela && faltam <= mc.min) {
+            const chave = `av:${hojeKey}:ev-${e.id}:${mc.id}`;
+            if (log[chave]) continue;            // este marco já foi avisado
+            await enviarPara(lista, {
+              title: "Compromisso chegando",
+              body: `${e.title} às ${e.time} — ${mc.texto}`,
+              tag: `ev-${e.id}`,                 // mesma tag: o de 30min substitui o de 1h na bandeja
+              url: "/",
+            });
+            log[chave] = true;
+            logMudou = true;
+          }
         }
       }
 
