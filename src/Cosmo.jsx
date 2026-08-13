@@ -47,6 +47,7 @@ import {
   FolderKanban,
   LogOut,
 } from "lucide-react";
+import ServicosScreen from "./Servicos.jsx";
 
 // ============ PALETA (azul elétrico / HUD Stark-Wayne) ============
 const C = {
@@ -1477,6 +1478,7 @@ export default function Cosmo({ onSignOut, userEmail } = {}) {
   const [habitLog, setHabitLog] = useState({}); // { "AAAA-MM-DD": { devocional: true, ... } }
   const [hubLayout, setHubLayout] = useState(DEFAULT_HUB_LAYOUT);
   const [memory, setMemory] = useState([]); // dossiê vivo: fatos que o JACKBOY sabe sobre o Jackson
+  const [servData, setServData] = useState({ clientes: [], orcamentos: [] }); // módulo de serviços
 
   const [greeting, setGreeting] = useState(null);
   const [welcome] = useState(() => welcomeLine()); // muda a cada acesso
@@ -1552,6 +1554,7 @@ export default function Cosmo({ onSignOut, userEmail } = {}) {
       setHabitLog(await load("jackboy-habitlog", {}));
       setHubLayout(normalizeHubLayout(await load("jackboy-hublayout", DEFAULT_HUB_LAYOUT)));
       setMemory(await load("jackboy-memory", []));
+      setServData(await load("jackboy-servicos", { clientes: [], orcamentos: [] }));
       setLoaded(true);
     })();
   }, []);
@@ -1596,6 +1599,7 @@ export default function Cosmo({ onSignOut, userEmail } = {}) {
   const persistIdeas = (v) => { setIdeas(v); save("jackboy-ideas", v); };
   const persistDiary = (v) => { setDiary(v); save("jackboy-diary", v); };
   const persistConversations = (v) => { setConversations(v); save("jackboy-conversations", v); };
+  const persistServ = (v) => { setServData(v); save("jackboy-servicos", v); };
   const [pendingChat, setPendingChat] = useState(null);
   // envia uma mensagem do HUB direto pro chat (abre a aba chat já com o texto)
   function quickChat(text) {
@@ -2067,6 +2071,7 @@ export default function Cosmo({ onSignOut, userEmail } = {}) {
     { id: "agenda", label: "AGENDA", Icon: CalendarClock },
     { id: "tarefas", label: "TAREFAS", Icon: ListTodo },
     { id: "projetos", label: "PROJETOS", Icon: FolderKanban },
+    { id: "servicos", label: "SERVIÇOS", Icon: Briefcase },
   ];
 
   if (!loaded) {
@@ -2145,6 +2150,9 @@ export default function Cosmo({ onSignOut, userEmail } = {}) {
         )}
         {tab === "projetos" && (
           <ProjectsScreen projects={projects} openProjectId={openProjectId} setOpenProjectId={setOpenProjectId} breakdownProject={breakdownProject} breakingId={breakingId} toggleSub={toggleSub} setSubDay={setSubDay} addSub={addSub} deleteSub={deleteSub} deleteProject={deleteProject} completeProject={completeProject} addProject={addProject} organizeWeek={organizeWeek} organizing={organizing} />
+        )}
+        {tab === "servicos" && (
+          <ServicosScreen C={C} MONO={MONO} SANS={SANS} servData={servData} persistServ={persistServ} />
         )}
         {tab === "chat" && (
           <ChatScreen conversations={conversations} persistConversations={persistConversations} projects={projects} tasks={tasks} events={events} marks={marks} ideas={ideas} hubLayout={hubLayout} applyOps={applyOps} memory={memory} pendingChat={pendingChat} clearPendingChat={() => setPendingChat(null)} />

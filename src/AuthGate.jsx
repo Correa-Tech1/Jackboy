@@ -1,11 +1,13 @@
 import { useState, useEffect } from "react";
 import { supabase, supabaseReady } from "./supabaseClient.js";
 import Cosmo, { setStorageUser } from "./Cosmo.jsx";
+import Splash from "./Splash.jsx";
 
 // Tela de login (email + senha) + porteiro que decide se mostra o JACKBOY ou o login.
 export default function AuthGate() {
   const [session, setSession] = useState(null);
   const [checking, setChecking] = useState(true);
+  const [showSplash, setShowSplash] = useState(true);
   const [mode, setMode] = useState("entrar"); // "entrar" | "criar"
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -60,7 +62,7 @@ export default function AuthGate() {
   }
 
   const shell = (children) => (
-    <div style={{ minHeight: "100vh", background: "radial-gradient(ellipse at 50% -10%, #4A4E54 0%, #42454B 55%, #3A3D42 100%)", display: "flex", alignItems: "center", justifyContent: "center", padding: 24, fontFamily: "'Inter', system-ui, sans-serif" }}>
+    <div style={{ minHeight: "100vh", background: "radial-gradient(ellipse at 50% -10%, #16181F 0%, #0F1015 55%, #0A0A0C 100%)", display: "flex", alignItems: "center", justifyContent: "center", padding: 24, fontFamily: "'Inter', system-ui, sans-serif" }}>
       <div style={{ width: "100%", maxWidth: 380, textAlign: "center" }}>
         <div style={{ display: "flex", justifyContent: "center", marginBottom: 18 }}>
           <svg width="88" height="88" viewBox="0 0 92 92" aria-hidden="true">
@@ -85,6 +87,10 @@ export default function AuthGate() {
   const inputStyle = { width: "100%", background: "rgba(255,255,255,0.06)", border: "0.5px solid rgba(255,255,255,0.18)", borderRadius: 10, padding: "12px 14px", fontSize: 14, color: "#F4F5F7", outline: "none", fontFamily: "inherit", marginTop: 10 };
   const btnStyle = { width: "100%", marginTop: 14, background: "#4FA3E0", color: "#0A2B45", border: "none", borderRadius: 10, padding: "12px", fontSize: 14, fontWeight: 600, cursor: "pointer", fontFamily: "inherit" };
   const linkStyle = { background: "none", border: "none", color: "#7FC0EE", fontSize: 12.5, cursor: "pointer", marginTop: 16, fontFamily: "inherit" };
+
+  if (showSplash) {
+    return <Splash onDone={() => setShowSplash(false)} />;
+  }
 
   if (!supabaseReady) {
     // DIAGNÓSTICO: mostra o que o app está enxergando das variáveis, em vez de abrir mudo.
