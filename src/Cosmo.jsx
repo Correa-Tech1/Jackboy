@@ -455,62 +455,100 @@ function createRecognizer(onResult, onEnd, onError) {
   rec.lang = "pt-BR";
   rec.continuous = true;      // continua ouvindo mesmo com pausas na fala
   rec.interimResults = true;
-  // "âncora" = tudo que já foi finalizado em sessões anteriores do reconhecimento.
-  // A cada evento, o texto final da SESSÃO ATUAL é RECONSTRUÍDO do zero a partir do
-  // array de resultados (não acumulado com +=). Isso evita a duplicação do Android,
-  // que reprocessa/reemite resultados já finalizados ("FalaFala JackFala Jack boy").
-  let ancora = "";            // texto consolidado de sessões já encerradas
-  rec._stopping = false;      // marca quando o usuário mandou parar de fato
+
+  // ---- Anti-duplicação (bug do Android/Samsung) ----
+  // O problema: no Samsung, ao reiniciar o reconhecimento (onend->start), o array de
+  // results NÃO zera de forma confiável, e trechos já finalizados são reemitidos —
+  // gerando "testandotestandotestando". A defesa: em vez de somar transcripts, a gente
+  // guarda o MELHOR texto final já visto (o mais longo/completo) e só troca quando o
+  // novo texto REALMENTE contém/estende o anterior. Nunca concatena texto repetido.
+  rec._stopping = false;
   rec._running = false;
+  let finalFixo = "";   // melhor transcript final consolidado até agora
+
+  // desfaz um bloco colado repetido dentro de UMA palavra ("testandotestando"->"testando")
+  function descolarPalavra(w) {
+    if (!w || w.length < 6) return w;
+    for (let len = Math.floor(w.length / 2); len >= 3; len--) {
+      const bloco = w.slice(0, len);
+      let rep = 1;
+      while (w.slice(rep * len, (rep + 1) * len) === bloco) rep++;
+      if (rep >= 2) {
+        const resto = w.slice(rep * len);
+        return bloco + (resto ? descolarPalavra(resto) : "");
+      }
+    }
+    return w;
+  }
+  // remove repetição imediata: blocos colados dentro de palavras e a MESMA palavra
+  // repetida 3+ vezes seguidas com espaço ("ola ola ola"->"ola ola").
+  function tirarRepeticaoColada(s) {
+    if (!s) return s;
+    // 1) limpa cada palavra de blocos colados (bug do reconhecedor)
+    let palavras = s.split(/\s+/).map(descolarPalavra);
+    // 2) mesma palavra repetida 3+ vezes seguidas (conservador: mantém até 2)
+    const out = [];
+    let cont = 0;
+    for (let i = 0; i < palavras.length; i++) {
+      if (i > 0 && palavras[i].toLowerCase() === palavras[i - 1].toLowerCase()) {
+        cont++;
+        if (cont >= 2) continue;
+      } else { cont = 0; }
+      out.push(palavras[i]);
+    }
+    return out.join(" ").trim();
+  }
+
   rec.onstart = () => { rec._running = true; };
   rec.onresult = (e) => {
     if (rec._stopping) return;
-    let finalSessao = "";
+    // reconstrói final e interim SÓ desta emissão
+    let finalAgora = "";
     let interim = "";
-    // varre TODOS os resultados desta sessão (não a partir de resultIndex),
-    // reconstruindo o texto — reprocessar o mesmo índice não duplica mais.
     for (let i = 0; i < e.results.length; i++) {
       const t = e.results[i][0].transcript;
-      if (e.results[i].isFinal) finalSessao += t;
+      if (e.results[i].isFinal) finalAgora += t;
       else interim += t;
     }
-    const juntar = (a, b) => {
-      a = a.trim(); b = b.trim();
-      if (!a) return b;
-      if (!b) return a;
-      return a + " " + b;
-    };
-    const textoAtual = juntar(juntar(ancora, finalSessao), interim);
-    onResult && onResult(textoAtual.trim(), false);
-    // guarda o final desta sessão pra virar âncora se o reconhecimento reiniciar
-    rec._finalSessao = finalSessao.trim();
+    finalAgora = tirarRepeticaoColada(finalAgora.trim());
+    interim = interim.trim();
+
+    // consolida o final: fica com o texto mais completo, sem duplicar
+    if (finalAgora) {
+      if (!finalFixo) {
+        finalFixo = finalAgora;
+      } else if (finalAgora.startsWith(finalFixo)) {
+        // novo estende o anterior — ok, substitui
+        finalFixo = finalAgora;
+      } else if (finalFixo.startsWith(finalAgora)) {
+        // novo é subconjunto do que já temos — ignora
+      } else if (!finalFixo.endsWith(finalAgora)) {
+        // trecho realmente novo — anexa com espaço
+        finalFixo = (finalFixo + " " + finalAgora).trim();
+      }
+      finalFixo = tirarRepeticaoColada(finalFixo);
+    }
+
+    const mostrar = tirarRepeticaoColada((finalFixo + (interim ? " " + interim : "")).trim());
+    onResult && onResult(mostrar, false);
   };
   rec.onerror = (e) => {
     const err = e.error || "erro";
-    // "no-speech"/"aborted" durante escuta contínua não é falha real — ignora
-    if (err === "no-speech" || err === "aborted") return;
+    if (err === "no-speech" || err === "aborted") return;   // não é falha real
     onError && onError(err);
   };
   rec.onend = () => {
     rec._running = false;
-    // consolida o que foi finalizado nesta sessão dentro da âncora
-    if (rec._finalSessao) {
-      ancora = (ancora ? ancora + " " : "") + rec._finalSessao;
-      ancora = ancora.trim();
-      rec._finalSessao = "";
-    }
-    // só reinicia se o usuário NÃO mandou parar (mantém ouvindo nas pausas).
-    // Ao reiniciar, o array de resultados zera — mas a âncora preserva o já dito.
     if (!rec._stopping) {
+      // reinicia pra continuar ouvindo nas pausas; finalFixo preserva o já dito
       try { rec.start(); return; } catch (e) { /* já parou */ }
     }
-    onEnd && onEnd(ancora.trim());
+    onEnd && onEnd(finalFixo.trim());
   };
-  // desligamento REAL: marca stopping, remove handlers e libera o microfone (abort)
   rec.forceStop = () => {
     rec._stopping = true;
     try { rec.onend = null; rec.onresult = null; rec.onerror = null; rec.onstart = null; } catch (e) {}
-    try { rec.abort(); } catch (e) {}   // abort libera o hardware na hora (apaga o ponto laranja)
+    try { rec.abort(); } catch (e) {}   // abort libera o hardware (apaga o ponto laranja)
     try { rec.stop(); } catch (e) {}
     rec._running = false;
   };
