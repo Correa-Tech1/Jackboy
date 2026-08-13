@@ -453,20 +453,18 @@ function createRecognizer(onResult, onEnd, onError) {
   if (!SR) return null;
   const rec = new SR();
   rec.lang = "pt-BR";
-  rec.continuous = true;      // continua ouvindo mesmo com pausas na fala
+  // continuous=false: cada "rodada" do reconhecedor é uma sessão FECHADA. No Samsung,
+  // continuous=true + reinício automático faz o array de results ser reemitido em loop
+  // ("capacidade testando capacidade testando..."). Com sessões fechadas, cada rodada
+  // devolve seu texto final UMA vez; a gente acumula esse texto e reinicia limpo.
+  rec.continuous = false;
   rec.interimResults = true;
 
-  // ---- Anti-duplicação (bug do Android/Samsung) ----
-  // O problema: no Samsung, ao reiniciar o reconhecimento (onend->start), o array de
-  // results NÃO zera de forma confiável, e trechos já finalizados são reemitidos —
-  // gerando "testandotestandotestando". A defesa: em vez de somar transcripts, a gente
-  // guarda o MELHOR texto final já visto (o mais longo/completo) e só troca quando o
-  // novo texto REALMENTE contém/estende o anterior. Nunca concatena texto repetido.
   rec._stopping = false;
   rec._running = false;
-  let finalFixo = "";   // melhor transcript final consolidado até agora
+  let acumulado = "";        // texto consolidado de rodadas já encerradas
 
-  // desfaz um bloco colado repetido dentro de UMA palavra ("testandotestando"->"testando")
+  // desfaz bloco colado repetido dentro de uma palavra ("capacidadecapacidade"->"capacidade")
   function descolarPalavra(w) {
     if (!w || w.length < 6) return w;
     for (let len = Math.floor(w.length / 2); len >= 3; len--) {
@@ -480,57 +478,46 @@ function createRecognizer(onResult, onEnd, onError) {
     }
     return w;
   }
-  // remove repetição imediata: blocos colados dentro de palavras e a MESMA palavra
-  // repetida 3+ vezes seguidas com espaço ("ola ola ola"->"ola ola").
-  function tirarRepeticaoColada(s) {
+  // 2ª camada de segurança: remove blocos colados e sequências de palavras repetidas
+  function limpar(s) {
     if (!s) return s;
-    // 1) limpa cada palavra de blocos colados (bug do reconhecedor)
-    let palavras = s.split(/\s+/).map(descolarPalavra);
-    // 2) mesma palavra repetida 3+ vezes seguidas (conservador: mantém até 2)
-    const out = [];
-    let cont = 0;
-    for (let i = 0; i < palavras.length; i++) {
-      if (i > 0 && palavras[i].toLowerCase() === palavras[i - 1].toLowerCase()) {
-        cont++;
-        if (cont >= 2) continue;
-      } else { cont = 0; }
-      out.push(palavras[i]);
+    let palavras = s.split(/\s+/).map(descolarPalavra).filter(Boolean);
+    // remove repetição de PADRÕES de 1 a 4 palavras que se repetem em sequência
+    // (pega "capacidade testando capacidade testando" -> "capacidade testando")
+    for (let n = 1; n <= 4; n++) {
+      let mudou = true;
+      while (mudou) {
+        mudou = false;
+        for (let i = 0; i + 2 * n <= palavras.length; i++) {
+          const a = palavras.slice(i, i + n).join(" ").toLowerCase();
+          const b = palavras.slice(i + n, i + 2 * n).join(" ").toLowerCase();
+          if (a && a === b) {
+            palavras.splice(i + n, n);   // remove a 2ª ocorrência colada
+            mudou = true;
+            break;
+          }
+        }
+      }
     }
-    return out.join(" ").trim();
+    return palavras.join(" ").trim();
   }
 
   rec.onstart = () => { rec._running = true; };
   rec.onresult = (e) => {
     if (rec._stopping) return;
-    // reconstrói final e interim SÓ desta emissão
-    let finalAgora = "";
+    // como continuous=false, esta sessão tem um conjunto pequeno de resultados;
+    // montamos o texto desta rodada e combinamos com o já acumulado (sem duplicar).
+    let finalRodada = "";
     let interim = "";
     for (let i = 0; i < e.results.length; i++) {
       const t = e.results[i][0].transcript;
-      if (e.results[i].isFinal) finalAgora += t;
-      else interim += t;
+      if (e.results[i].isFinal) finalRodada += t + " ";
+      else interim += t + " ";
     }
-    finalAgora = tirarRepeticaoColada(finalAgora.trim());
-    interim = interim.trim();
-
-    // consolida o final: fica com o texto mais completo, sem duplicar
-    if (finalAgora) {
-      if (!finalFixo) {
-        finalFixo = finalAgora;
-      } else if (finalAgora.startsWith(finalFixo)) {
-        // novo estende o anterior — ok, substitui
-        finalFixo = finalAgora;
-      } else if (finalFixo.startsWith(finalAgora)) {
-        // novo é subconjunto do que já temos — ignora
-      } else if (!finalFixo.endsWith(finalAgora)) {
-        // trecho realmente novo — anexa com espaço
-        finalFixo = (finalFixo + " " + finalAgora).trim();
-      }
-      finalFixo = tirarRepeticaoColada(finalFixo);
-    }
-
-    const mostrar = tirarRepeticaoColada((finalFixo + (interim ? " " + interim : "")).trim());
+    const base = acumulado ? acumulado + " " : "";
+    const mostrar = limpar((base + finalRodada + interim).trim());
     onResult && onResult(mostrar, false);
+    rec._finalRodada = limpar(finalRodada.trim());
   };
   rec.onerror = (e) => {
     const err = e.error || "erro";
@@ -539,11 +526,16 @@ function createRecognizer(onResult, onEnd, onError) {
   };
   rec.onend = () => {
     rec._running = false;
+    // consolida o texto final desta rodada no acumulado (uma vez só)
+    if (rec._finalRodada) {
+      acumulado = limpar(((acumulado ? acumulado + " " : "") + rec._finalRodada).trim());
+      rec._finalRodada = "";
+    }
+    // reinicia uma NOVA rodada limpa (mantém ouvindo nas pausas), a menos que o usuário parou
     if (!rec._stopping) {
-      // reinicia pra continuar ouvindo nas pausas; finalFixo preserva o já dito
       try { rec.start(); return; } catch (e) { /* já parou */ }
     }
-    onEnd && onEnd(finalFixo.trim());
+    onEnd && onEnd(acumulado.trim());
   };
   rec.forceStop = () => {
     rec._stopping = true;
