@@ -412,6 +412,7 @@ import { supabase, supabaseReady } from "./supabaseClient.js";
 
 let _userId = null;
 export function setStorageUser(id) { _userId = id; }
+export function getStorageUser() { return _userId; }
 
 const storage = {
   async get(key) {
@@ -660,6 +661,65 @@ function notifLigado() {
 }
 function setNotifLigado(v) {
   try { localStorage.setItem(NOTIF_KEY, v ? "sim" : "nao"); } catch (e) {}
+}
+
+// ============ PUSH (notificação com o app FECHADO, via servidor) ============
+// Chave pública VAPID — identifica o nosso servidor como remetente autorizado.
+// É pública por design (a privada fica só no servidor). Se você regerar as chaves,
+// troque aqui E na variável VAPID_PUBLIC_KEY do Vercel.
+const VAPID_PUBLIC_KEY = "BPliPuJC1Bh7SZoWK5YUjiJXmkczoDHe4IEIeqtOqcOQHwCEkr2Nj-tZ_8ZWZRbX3TZ_yXWaUYdY5-At9V983zk";
+
+// converte a chave (base64 url) pro formato que o navegador exige
+function urlBase64ToUint8Array(base64String) {
+  const padding = "=".repeat((4 - (base64String.length % 4)) % 4);
+  const base64 = (base64String + padding).replace(/-/g, "+").replace(/_/g, "/");
+  const raw = atob(base64);
+  const arr = new Uint8Array(raw.length);
+  for (let i = 0; i < raw.length; i++) arr[i] = raw.charCodeAt(i);
+  return arr;
+}
+
+// inscreve ESTE aparelho no push e manda a inscrição pro servidor guardar.
+// Retorna true se deu certo. Precisa de Service Worker + permissão concedida.
+async function inscreverPush(userId) {
+  try {
+    if (!("serviceWorker" in navigator) || !("PushManager" in window)) return false;
+    const reg = await navigator.serviceWorker.ready;
+    let sub = await reg.pushManager.getSubscription();
+    if (!sub) {
+      sub = await reg.pushManager.subscribe({
+        userVisibleOnly: true,
+        applicationServerKey: urlBase64ToUint8Array(VAPID_PUBLIC_KEY),
+      });
+    }
+    const resp = await fetch("/api/push-subscribe", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ subscription: sub, userId: userId || null }),
+    });
+    return resp.ok;
+  } catch (e) {
+    return false;
+  }
+}
+
+// desinscreve este aparelho (ao desligar as notificações)
+async function desinscreverPush() {
+  try {
+    if (!("serviceWorker" in navigator)) return;
+    const reg = await navigator.serviceWorker.ready;
+    const sub = await reg.pushManager.getSubscription();
+    if (sub) {
+      try {
+        await fetch("/api/push-subscribe", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ subscription: sub, action: "unsubscribe" }),
+        });
+      } catch (e) {}
+      try { await sub.unsubscribe(); } catch (e) {}
+    }
+  } catch (e) {}
 }
 function mostrarNotif(titulo, corpo, extra) {
   try {
@@ -2929,12 +2989,29 @@ function ChatScreen({ conversations, persistConversations, projects, tasks, even
   const [voiceMode, setVoiceModeState] = useState(() => getVoiceMode());
   const [showVoiceCfg, setShowVoiceCfg] = useState(false);
   const [notifOn, setNotifOn] = useState(() => notifLigado());
+  const [notifBusy, setNotifBusy] = useState(false);
   async function toggleNotif() {
-    if (notifOn) { setNotifLigado(false); setNotifOn(false); return; }
+    if (notifBusy) return;
+    if (notifOn) {
+      setNotifBusy(true);
+      setNotifLigado(false); setNotifOn(false);
+      try { await desinscreverPush(); } catch (e) {}
+      setNotifBusy(false);
+      return;
+    }
     const perm = await pedirPermissaoNotif();
     if (perm === "granted") {
+      setNotifBusy(true);
       setNotifLigado(true); setNotifOn(true);
       mostrarNotif("JACKBOY", "Pronto, Jackson! Vou te lembrar das coisas e te dar aquele empurrão. 💪");
+      // inscreve o aparelho pro push com app fechado (compromissos + tarefas)
+      let ok = false;
+      try { ok = await inscreverPush(getStorageUser()); } catch (e) {}
+      if (!ok) {
+        // notificação local (app aberto) segue funcionando; só o push com app fechado falhou
+        console.warn("push não inscrito — notificações com app fechado indisponíveis por ora");
+      }
+      setNotifBusy(false);
     } else if (perm === "denied") {
       alert("As notificações estão bloqueadas. Pra ligar, ative as notificações do JACKBOY nas configurações do navegador/celular.");
     } else if (perm === "unsupported") {
