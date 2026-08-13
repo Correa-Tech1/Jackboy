@@ -500,20 +500,77 @@ function pickPtVoice() {
     return voices.find((v) => /pt.?BR/i.test(v.lang)) || voices.find((v) => /pt/i.test(v.lang)) || null;
   } catch (e) { return null; }
 }
+// Quebra o texto em pedaços curtos (~180 chars) respeitando fim de frase.
+// O Chrome no Android corta/reinicia falas longas — falar por partes evita a repetição.
+function _chunkText(text) {
+  const clean = String(text || "").replace(/\s+/g, " ").trim();
+  if (!clean) return [];
+  const MAX = 180;
+  const partes = clean.match(/[^.!?…]+[.!?…]*/g) || [clean];
+  const out = [];
+  let buf = "";
+  for (const p of partes) {
+    const frag = p.trim();
+    if (!frag) continue;
+    if ((buf + " " + frag).trim().length <= MAX) {
+      buf = (buf + " " + frag).trim();
+    } else {
+      if (buf) out.push(buf);
+      if (frag.length <= MAX) { buf = frag; }
+      else { // frase gigante sem pontuação: parte por vírgula/espaço
+        const sub = frag.match(/.{1,180}(\s|$)/g) || [frag];
+        for (let i = 0; i < sub.length; i++) {
+          if (i < sub.length - 1) out.push(sub[i].trim());
+          else buf = sub[i].trim();
+        }
+      }
+    }
+  }
+  if (buf) out.push(buf);
+  return out;
+}
+
+// controlador da fala do navegador (fila única, imune a repetição)
+let _navSeq = 0; // cada fala nova incrementa; falas antigas se auto-cancelam
 function speak(text, onStart, onEnd) {
   try {
     if (typeof window === "undefined" || !window.speechSynthesis) { onEnd && onEnd(); return; }
-    window.speechSynthesis.cancel();
-    const u = new SpeechSynthesisUtterance(text);
-    u.lang = "pt-BR";
-    u.rate = 1.0;
-    u.pitch = 1.0;
+    const mySeq = ++_navSeq;           // identidade desta fala
+    window.speechSynthesis.cancel();   // limpa qualquer fila anterior
+    const partes = _chunkText(text);
+    if (!partes.length) { onEnd && onEnd(); return; }
+    let idx = 0;
+    let jaComecou = false;
+    let jaTerminou = false;            // trava: onEnd só dispara UMA vez
+    const finalizar = () => {
+      if (jaTerminou) return;
+      jaTerminou = true;
+      onEnd && onEnd();
+    };
     const ptVoice = pickPtVoice();
-    if (ptVoice) u.voice = ptVoice;
-    u.onstart = () => onStart && onStart();
-    u.onend = () => onEnd && onEnd();
-    u.onerror = () => onEnd && onEnd();
-    window.speechSynthesis.speak(u);
+    const falarProxima = () => {
+      if (mySeq !== _navSeq) return;   // outra fala assumiu — aborta silenciosamente
+      if (idx >= partes.length) { finalizar(); return; }
+      const u = new SpeechSynthesisUtterance(partes[idx]);
+      u.lang = "pt-BR";
+      u.rate = 1.0;
+      u.pitch = 1.0;
+      if (ptVoice) u.voice = ptVoice;
+      let avancou = false;              // trava por-pedaço: onend/onerror uma vez só
+      u.onstart = () => {
+        if (!jaComecou) { jaComecou = true; onStart && onStart(); }
+      };
+      const proximo = () => {
+        if (avancou) return;
+        avancou = true;
+        idx++;
+        falarProxima();
+      };
+      u.onend = proximo;
+      u.onerror = proximo;
+      window.speechSynthesis.speak(u);
+    };
+    falarProxima();
   } catch (e) { onEnd && onEnd(); }
 }
 function pauseSpeaking() {
@@ -526,6 +583,7 @@ function isSpeechPaused() {
   try { return !!(window.speechSynthesis && window.speechSynthesis.paused); } catch (e) { return false; }
 }
 function stopSpeaking() {
+  try { _navSeq++; } catch (e) {}   // invalida qualquer fila em andamento (nada mais avança)
   try { if (window.speechSynthesis) window.speechSynthesis.cancel(); } catch (e) {}
 }
 
@@ -550,9 +608,30 @@ function notifLigado() {
 function setNotifLigado(v) {
   try { localStorage.setItem(NOTIF_KEY, v ? "sim" : "nao"); } catch (e) {}
 }
-function mostrarNotif(titulo, corpo) {
+function mostrarNotif(titulo, corpo, extra) {
   try {
     if (notifPermission() !== "granted") return;
+    const tag = extra && extra.tag ? extra.tag : undefined;
+    const url = extra && extra.url ? extra.url : "/";
+    // Caminho preferido: via Service Worker (funciona melhor no Android e é a mesma
+    // porta que o push vai usar). Se não houver SW pronto, cai no Notification simples.
+    if (typeof navigator !== "undefined" && navigator.serviceWorker && navigator.serviceWorker.controller) {
+      try {
+        navigator.serviceWorker.controller.postMessage({
+          type: "JACKBOY_NOTIF", title: titulo, body: corpo, tag, url,
+        });
+        return;
+      } catch (e) {}
+    }
+    if (typeof navigator !== "undefined" && navigator.serviceWorker && navigator.serviceWorker.ready) {
+      navigator.serviceWorker.ready.then((reg) => {
+        try { reg.showNotification(titulo, { body: corpo, icon: "/icon-192.png", badge: "/icon-192.png", tag, renotify: !!tag, data: { url } }); }
+        catch (e) { try { new Notification(titulo, { body: corpo, icon: "/icon-192.png" }); } catch (e2) {} }
+      }).catch(() => {
+        try { new Notification(titulo, { body: corpo, icon: "/icon-192.png" }); } catch (e) {}
+      });
+      return;
+    }
     new Notification(titulo, { body: corpo, icon: "/icon-192.png", badge: "/icon-192.png" });
   } catch (e) {}
 }
@@ -575,14 +654,63 @@ function empurraoDoDia() {
   const i = new Date().getDate() % EMPURROES.length;
   return EMPURROES[i];
 }
-// verifica compromissos/tarefas de hoje e avisa (chamado ao abrir o app)
+// evita repetir a MESMA notificação (empurrão / compromisso / tarefa) no mesmo dia
+function _notifJaEnviada(chave) {
+  try { return (localStorage.getItem("jackboy-notif-log") || "").split("|").includes(chave); } catch (e) { return true; }
+}
+function _marcarNotifEnviada(chave) {
+  try {
+    const hoje = todayKey();
+    const raw = localStorage.getItem("jackboy-notif-log") || "";
+    // se o log é de outro dia, zera
+    const [dia, ...itens] = raw.split("::");
+    let lista = (dia === hoje) ? (itens.join("::").split("|").filter(Boolean)) : [];
+    if (!lista.includes(chave)) lista.push(chave);
+    localStorage.setItem("jackboy-notif-log", hoje + "::" + lista.join("|"));
+  } catch (e) {}
+}
+// id do dia da semana de hoje no padrão do app (seg..dom)
+function _todayDayId() {
+  return ["seg", "ter", "qua", "qui", "sex", "sab", "dom"][(new Date().getDay() + 6) % 7];
+}
+// verifica empurrão + compromissos + tarefas de hoje e avisa (chamado ao abrir o app)
 function checarLembretesHoje(events, tasks, projects) {
   if (!notifLigado()) return;
-  // empurrão motivacional 1x por dia
+  // 1) empurrão motivacional 1x por dia
   if (!jaDeuEmpurraoHoje()) {
-    mostrarNotif("JACKBOY", empurraoDoDia());
+    mostrarNotif("JACKBOY", empurraoDoDia(), { tag: "empurrao-dia" });
     marcarEmpurraoHoje();
   }
+  const hojeId = _todayDayId();
+  // 2) compromissos de hoje (eventos com day == hoje)
+  try {
+    const evsHoje = (events || []).filter((e) => e && e.day === hojeId);
+    for (const e of evsHoje) {
+      const chave = "ev-" + e.id;
+      if (_notifJaEnviada(chave)) continue;
+      const hora = e.time ? ` às ${e.time}` : "";
+      mostrarNotif("Compromisso de hoje", `${e.title}${hora}`, { tag: chave, url: "/" });
+      _marcarNotifEnviada(chave);
+    }
+  } catch (e) {}
+  // 3) tarefas de hoje ainda em aberto (avulsas + subtarefas de projetos com day == hoje)
+  try {
+    const tarefasHoje = [];
+    (tasks || []).forEach((t) => { if (t && !t.done && t.day === hojeId) tarefasHoje.push(t.title); });
+    (projects || []).forEach((p) => {
+      (p.subtasks || p.subtarefas || []).forEach((s) => { if (s && !s.done && s.day === hojeId) tarefasHoje.push(s.title); });
+    });
+    if (tarefasHoje.length) {
+      const chave = "tarefas-hoje";
+      if (!_notifJaEnviada(chave)) {
+        const corpo = tarefasHoje.length === 1
+          ? tarefasHoje[0]
+          : `Você tem ${tarefasHoje.length} tarefas pra hoje. Bora dar o primeiro passo, Jackson.`;
+        mostrarNotif("Tarefas de hoje", corpo, { tag: chave, url: "/" });
+        _marcarNotifEnviada(chave);
+      }
+    }
+  } catch (e) {}
 }
 
 // ---- VOZ PREMIUM (OpenAI TTS) com fallback pra voz do navegador ----
@@ -634,13 +762,24 @@ async function speakSmart(text, onStart, onEnd, onFallback) {
     if (!blob || blob.size < 200) throw new Error("audio-vazio"); // resposta inválida → fallback
     const url = URL.createObjectURL(blob);
     const audio = _getAudioEl();
+    // zera handlers de uma fala anterior (evita callback fantasma no Android)
+    try { audio.onplay = null; audio.onended = null; audio.onerror = null; } catch (e) {}
     audio.pause();
     audio.src = url;
     let started = false;
+    let resolvido = false;             // trava: onEnd/fallback só UMA vez
+    const limpar = () => { try { URL.revokeObjectURL(url); } catch (e) {} };
     audio.onplay = () => { started = true; onStart && onStart(); };
-    audio.onended = () => { onEnd && onEnd(); try { URL.revokeObjectURL(url); } catch (e) {} };
+    audio.onended = () => {
+      if (resolvido) return;
+      resolvido = true;
+      limpar();
+      onEnd && onEnd();
+    };
     audio.onerror = () => {
-      try { URL.revokeObjectURL(url); } catch (e) {}
+      if (resolvido) return;
+      resolvido = true;
+      limpar();
       // se falhou ANTES de começar a tocar, tenta a voz do navegador
       if (!started) { if (onFallback) onFallback(); speak(clean, onStart, onEnd); }
       else { onEnd && onEnd(); }
@@ -1275,10 +1414,19 @@ export default function Cosmo({ onSignOut, userEmail } = {}) {
       setHubLayout(normalizeHubLayout(await load("jackboy-hublayout", DEFAULT_HUB_LAYOUT)));
       setMemory(await load("jackboy-memory", []));
       setLoaded(true);
-      // lembretes locais (empurrão do dia) — só se o Jackson tiver ligado
-      try { setTimeout(() => checarLembretesHoje(), 1500); } catch (e) {}
     })();
   }, []);
+
+  // lembretes locais (empurrão + compromissos + tarefas de hoje) — só se o Jackson ligou.
+  // Roda depois que os dados carregaram, com os estados reais em mãos.
+  useEffect(() => {
+    if (!loaded) return;
+    const t = setTimeout(() => {
+      try { checarLembretesHoje(events, tasks, projects); } catch (e) {}
+    }, 1500);
+    return () => clearTimeout(t);
+    // eslint-disable-next-line
+  }, [loaded]);
 
   // ---------- persistência helpers ----------
   const save = (key, val) => {
@@ -2938,7 +3086,7 @@ function ChatScreen({ conversations, persistConversations, projects, tasks, even
             <Sparkles size={15} color={notifOn ? C.green : C.blueLight} />
             <div style={{ flex: 1, textAlign: "left" }}>
               <div style={{ fontSize: 12.5, color: C.ink }}>Lembretes e empurrões</div>
-              <div style={{ fontSize: 10, color: C.inkMute }}>{notifOn ? "ligado — você recebe o empurrão do dia" : "receba lembretes e incentivos no celular"}</div>
+              <div style={{ fontSize: 10, color: C.inkMute }}>{notifOn ? "ligado — empurrão do dia, compromissos e tarefas" : "receba o empurrão do dia, compromissos e tarefas"}</div>
             </div>
             <div style={{ width: 40, height: 22, borderRadius: 20, background: notifOn ? C.green : "rgba(255,255,255,0.1)", position: "relative", transition: "background 0.2s", flexShrink: 0 }}>
               <div style={{ position: "absolute", top: 2, left: notifOn ? 20 : 2, width: 18, height: 18, borderRadius: "50%", background: "#fff", transition: "left 0.2s" }} />
